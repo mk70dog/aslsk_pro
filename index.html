@@ -704,8 +704,8 @@ button.thc-sq:hover{border-top-color:#4a4a52}
     <button class="nb" id="nb-aphcc" onclick="NAVTAB('aphcc')">突撃/白兵戦</button>
     <button class="nb" id="nb-mc" onclick="NAVTAB('mc')">士気/損耗</button>
     <button class="nb" id="nb-ref" onclick="NAVTAB('ref')">早見表</button>
-    <button class="nb" id="nb-scen" onclick="NAVTAB('scen')">シナリオ</button>
     <button class="nb" id="nb-unit" onclick="NAVTAB('unit')">ユニット</button>
+    <button class="nb" id="nb-scen" onclick="NAVTAB('scen')">シナリオ</button>
     <button class="nb" id="nb-los" onclick="NAVTAB('los')">LOS判定</button>
   </div>
 </div>
@@ -5372,7 +5372,7 @@ function cowerMsg(cols,noEffect){
   }
   return '畏縮(Cower)：IFT列'+cols+'列低下'+(noEffect?' → FP列不足のため自動的に効果なし':'')+(cols>=2?' ← 未熟兵グループあり':'');
 }
-var APP_VERSION="1.5.637";
+var APP_VERSION="1.5.639";
 // 陣営判定用(枢軸/連合)。シナリオカードの陣営分け表示とターン表自動更新(陣営交代検知)で共有する。
 var AXIS_NATS={GER:true,ITA:true};
 var S={
@@ -16828,24 +16828,41 @@ function LosKeep(){
   var elevVal=(r.elevA===r.elevB)?'same':(r.elevA>r.elevB?'firer':'target');
   var temVal=(r.temB!=null)?r.temB:0;
   var temId=LOS_TEM_ID_BY_VALUE[temVal]||'open';
-  var hinderVal=r.hindranceDrm||0;
+  // 2026-08修正(ユーザー報告・実装承認済み[任せる]): 従来はhindranceDrmの合計値を
+  // 「LOS妨害(手動)」欄にまとめて入れるだけで、麦畑(Grain)・果樹園(Orchard)個別の
+  // カウンター(f.los.wht/f.los.orch)には一切反映されず、ユーザーからは「妨害が
+  // 反映されていない(個別欄が+0のまま)」ように見えてしまっていた。合計DRM自体は
+  // 正しかったが、内訳の可視性が失われていた。
+  // 対処: r.hindranceHexesの地形名(2番目の要素)を見て、"Grain"→wht、"Orchard"→orch
+  // へ振り分けてカウントし、それ以外(煙幕等、地形名からの機械的な振り分けが難しいもの)
+  // は従来通り「LOS妨害(手動)」の残余合計として扱う(合計DRMは常に一致するよう、
+  // 振り分け済み分をhinderVal側から差し引く)。
+  var losBreakdown={wht:0, orch:0};
+  var mappedCount=0;
+  (r.hindranceHexes||[]).forEach(function(hh){
+    var terrainName=hh[1];
+    if(terrainName==='Grain'){losBreakdown.wht++;mappedCount++;}
+    else if(terrainName==='Orchard'){losBreakdown.orch++;mappedCount++;}
+  });
+  var hinderVal=(r.hindranceDrm||0)-mappedCount; // 振り分け済み分(各+1)を残余合計から差し引く
+  if(hinderVal<0)hinderVal=0; // 念のための下限ガード(通常は発生しない)
   // ── 射撃タブ：4サブフェイズすべてに共通DRM(TEM/妨害/高低差)を反映し、
   //    レンジは新規グループを作らず、選択中とみなす末尾グループへ反映する
   //    (射撃タブは複数グループが同時表示される方式で単一の「選択中」状態を持たないため、
   //    直近に追加された＝最後尾のグループを対象とする) ──
   [S.fire,S.dff,S.dfph,S.afph].forEach(function(f){
     f.tem=temVal;f.temId=temId;f.elev=elevVal;
-    f.los={};f.hinder=hinderVal;
+    f.los={wht:losBreakdown.wht, orch:losBreakdown.orch};f.hinder=hinderVal;
     if(f.grps&&f.grps.length)f.grps[f.grps.length-1].range=r.range;
     clearFireRes(f);
   });
   // ── 砲撃タブ ──
   S.gun.drm.tem=temVal;S.gun.drm.temId=temId;S.gun.drm.elev=elevVal;
-  S.gun.drm.losT={};S.gun.drm.hinder=hinderVal;
+  S.gun.drm.losT={wht:losBreakdown.wht, orch:losBreakdown.orch};S.gun.drm.hinder=hinderVal;
   S.gun.range=r.range;S.gun.th_result=null;S.gun.ift_result=null;
   // ── 対戦車兵器タブ ──
   S.latw.drm.tem=temVal;S.latw.drm.temId=temId;S.latw.elev=elevVal;
-  S.latw.drm.losT={};S.latw.drm.hinder=hinderVal;
+  S.latw.drm.losT={wht:losBreakdown.wht, orch:losBreakdown.orch};S.latw.drm.hinder=hinderVal;
   S.latw.range=r.range;S.latw.th_result=null;S.latw.ift_result=null;S.latw.bb_result=null;S.latw.pf_result=null;
   // 2026-08追加(ダルマ指示): KEEPは射撃/砲撃/対戦車兵器の複数タブに同時反映するため、
   // 直後にこれらのタブ間を移動してもNAVTABのALL CLEAR確認で消えないようフラグを立てる。
